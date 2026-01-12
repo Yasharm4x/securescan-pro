@@ -3,6 +3,7 @@ import { LogOut, Plus, History, Shield } from 'lucide-react';
 import { Company, QRRecord } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { RecentQRCard } from './RecentQRCard';
+import { ThemeToggle } from './ThemeToggle';
 
 interface DashboardProps {
   company: Company;
@@ -35,6 +36,7 @@ export const Dashboard = ({ company, onLogout, onGenerateNew, recentRecords }: D
                 <Shield className="h-3.5 w-3.5 text-success" />
                 <span className="text-xs font-medium text-success">Secure Mode</span>
               </div>
+              <ThemeToggle />
               <Button variant="ghost" size="sm" onClick={onLogout} className="text-muted-foreground hover:text-foreground">
                 <LogOut className="h-4 w-4 mr-2" />
                 Switch Company
