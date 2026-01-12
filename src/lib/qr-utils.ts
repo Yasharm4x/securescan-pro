@@ -1,8 +1,29 @@
-import CryptoJS from 'crypto-js';
-import { QRRecord, VehicleData, DriverData, VerificationResult } from './types';
-import { getCompanyById } from './companies';
+import CryptoJS from "crypto-js";
+import { QRRecord, VehicleData, DriverData, VerificationResult } from "./types";
+import { getCompanyById } from "./companies";
 
-const SECRET_KEY = 'VERIFLOW_SECRET_2024';
+/* ------------------------------------------------------------------ */
+/* Environment Safety Helpers                                          */
+/* ------------------------------------------------------------------ */
+
+const isBrowser = (): boolean =>
+  typeof window !== "undefined" &&
+  typeof window.localStorage !== "undefined";
+
+/* ------------------------------------------------------------------ */
+/* Crypto Configuration                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * NOTE:
+ * This secret is fine for DEMO / FRONTEND verification.
+ * For production security, signatures must be generated server-side.
+ */
+const SECRET_KEY = "VERIFLOW_SECRET_2024";
+
+/* ------------------------------------------------------------------ */
+/* Types                                                               */
+/* ------------------------------------------------------------------ */
 
 export interface QRPayload {
   companyId: string;
@@ -14,9 +35,17 @@ export interface QRPayload {
   signature: string;
 }
 
-export const generateSignature = (data: Omit<QRPayload, 'signature'>): string => {
+/* ------------------------------------------------------------------ */
+/* Signature + Payload Utilities                                       */
+/* ------------------------------------------------------------------ */
+
+export const generateSignature = (
+  data: Omit<QRPayload, "signature">
+): string => {
   const dataString = JSON.stringify(data);
-  return CryptoJS.HmacSHA256(dataString, SECRET_KEY).toString(CryptoJS.enc.Hex);
+  return CryptoJS.HmacSHA256(dataString, SECRET_KEY).toString(
+    CryptoJS.enc.Hex
+  );
 };
 
 export const createQRPayload = (
@@ -27,14 +56,29 @@ export const createQRPayload = (
   purpose?: string
 ): QRPayload => {
   const createdAt = new Date().toISOString();
-  const baseData = { companyId, vehicle, driver, validTill, purpose, createdAt };
+
+  const baseData = {
+    companyId,
+    vehicle,
+    driver,
+    validTill,
+    purpose,
+    createdAt,
+  };
+
   const signature = generateSignature(baseData);
-  return { ...baseData, signature };
+
+  return {
+    ...baseData,
+    signature,
+  };
 };
 
 export const encodePayload = (payload: QRPayload): string => {
   const jsonString = JSON.stringify(payload);
-  return CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(jsonString));
+  return CryptoJS.enc.Base64.stringify(
+    CryptoJS.enc.Utf8.parse(jsonString)
+  );
 };
 
 export const decodePayload = (encoded: string): QRPayload | null => {
@@ -42,10 +86,15 @@ export const decodePayload = (encoded: string): QRPayload | null => {
     const decoded = CryptoJS.enc.Base64.parse(encoded);
     const jsonString = decoded.toString(CryptoJS.enc.Utf8);
     return JSON.parse(jsonString);
-  } catch {
+  } catch (err) {
+    console.error("Failed to decode QR payload:", err);
     return null;
   }
 };
+
+/* ------------------------------------------------------------------ */
+/* Verification Logic                                                   */
+/* ------------------------------------------------------------------ */
 
 export const verifyPayload = (encoded: string): VerificationResult => {
   const payload = decodePayload(encoded);
@@ -53,8 +102,9 @@ export const verifyPayload = (encoded: string): VerificationResult => {
   if (!payload) {
     return {
       isValid: false,
-      status: 'invalid',
-      message: 'Unable to decode verification data. The QR code may be corrupted.',
+      status: "invalid",
+      message:
+        "Unable to decode verification data. The QR code may be corrupted.",
     };
   }
 
@@ -62,30 +112,32 @@ export const verifyPayload = (encoded: string): VerificationResult => {
   if (!company) {
     return {
       isValid: false,
-      status: 'invalid',
-      message: 'Unknown company identifier. This QR code is not valid.',
+      status: "invalid",
+      message:
+        "Unknown company identifier. This QR code is not valid.",
     };
   }
 
-  // Verify signature
+  // Verify signature integrity
   const { signature, ...dataWithoutSignature } = payload;
   const expectedSignature = generateSignature(dataWithoutSignature);
 
   if (signature !== expectedSignature) {
     return {
       isValid: false,
-      status: 'tampered',
-      message: 'Signature verification failed. This QR code may have been tampered with.',
+      status: "tampered",
+      message:
+        "Signature verification failed. This QR code may have been tampered with.",
     };
   }
 
-  // Check expiry
+  // Expiry validation
   if (payload.validTill) {
     const expiryDate = new Date(payload.validTill);
     if (expiryDate < new Date()) {
       return {
         isValid: false,
-        status: 'expired',
+        status: "expired",
         message: `This verification expired on ${expiryDate.toLocaleDateString()}.`,
         data: {
           company,
@@ -101,8 +153,9 @@ export const verifyPayload = (encoded: string): VerificationResult => {
 
   return {
     isValid: true,
-    status: 'verified',
-    message: 'This vehicle and driver are verified and authentic.',
+    status: "verified",
+    message:
+      "This vehicle and driver are verified and authentic.",
     data: {
       company,
       vehicle: payload.vehicle,
@@ -114,23 +167,60 @@ export const verifyPayload = (encoded: string): VerificationResult => {
   };
 };
 
-// Storage utilities
-const STORAGE_KEY = 'veriflow_qr_records';
+/* ------------------------------------------------------------------ */
+/* Local Storage Utilities (PRODUCTION SAFE)                            */
+/* ------------------------------------------------------------------ */
 
-export const getStoredRecords = (companyId: string): QRRecord[] => {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (!stored) return [];
-  const allRecords: QRRecord[] = JSON.parse(stored);
-  return allRecords.filter((r) => r.companyId === companyId);
+const STORAGE_KEY = "veriflow_qr_records";
+
+export const getStoredRecords = (
+  companyId: string
+): QRRecord[] => {
+  if (!isBrowser()) return [];
+
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return [];
+
+    const allRecords: QRRecord[] = JSON.parse(stored);
+    return allRecords.filter(
+      (record) => record.companyId === companyId
+    );
+  } catch (err) {
+    console.error(
+      "Failed to read stored QR records:",
+      err
+    );
+    return [];
+  }
 };
 
 export const saveRecord = (record: QRRecord): void => {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  const allRecords: QRRecord[] = stored ? JSON.parse(stored) : [];
-  allRecords.unshift(record);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(allRecords.slice(0, 100)));
+  if (!isBrowser()) return;
+
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const allRecords: QRRecord[] = stored
+      ? JSON.parse(stored)
+      : [];
+
+    allRecords.unshift(record);
+
+    // Keep last 100 records max
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(allRecords.slice(0, 100))
+    );
+  } catch (err) {
+    console.error(
+      "Failed to save QR record:",
+      err
+    );
+  }
 };
 
 export const generateRecordId = (): string => {
-  return `qr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `qr_${Date.now()}_${Math.random()
+    .toString(36)
+    .slice(2, 11)}`;
 };
