@@ -4,6 +4,8 @@ import path from "path";
 import { componentTagger } from "lovable-tagger";
 
 export default defineConfig(({ mode }) => ({
+  base: "/securescan-pro/", // 🔑 REQUIRED for repo-based GitHub Pages
+
   server: {
     host: "::",
     port: 8080,
